@@ -129,11 +129,13 @@ func (l *lokiExporter) logDataToLoki(ld pdata.Logs) (pr *logproto.PushRequest, n
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
-				mergedLabels, dropped := l.convertAttributesAndMerge(log.Attributes(), resource.Attributes())
+				standardLabels := l.convertStandardFieldsToLabels(log)
+				attributesLabels, dropped := l.convertAttributesAndMerge(log.Attributes(), resource.Attributes())
 				if dropped {
 					numDroppedLogs++
 					continue
 				}
+				mergedLabels := attributesLabels.Merge(standardLabels)
 				labels := mergedLabels.String()
 				entry := convertLogToLokiEntry(log)
 
@@ -195,9 +197,57 @@ func (l *lokiExporter) convertAttributesToLabels(attributes pdata.AttributeMap, 
 	return ls
 }
 
+func (l *lokiExporter) convertStandardFieldsToLabels(lr pdata.LogRecord) model.LabelSet {
+	ls := model.LabelSet{}
+
+	if len(l.config.Labels.SpanIDLabel) > 0 && !lr.SpanID().IsEmpty() {
+		labelName := model.LabelName(l.config.Labels.SpanIDLabel)
+		ls[labelName] = model.LabelValue(lr.SpanID().HexString())
+	}
+	if len(l.config.Labels.TraceIDLabel) > 0 && !lr.TraceID().IsEmpty() {
+		labelName := model.LabelName(l.config.Labels.TraceIDLabel)
+		ls[labelName] = model.LabelValue(lr.TraceID().HexString())
+	}
+	if len(l.config.Labels.SeverityNumberLabel) > 0 {
+		labelName := model.LabelName(l.config.Labels.SeverityNumberLabel)
+		ls[labelName] = model.LabelValue(lr.SeverityNumber().String())
+		ls[model.LabelName("level")] = model.LabelValue(mapToGrafanaLevel(lr.SeverityNumber()))
+	}
+	if len(l.config.Labels.SeverityTextLabel) > 0 {
+		labelName := model.LabelName(l.config.Labels.SeverityTextLabel)
+		ls[labelName] = model.LabelValue(lr.SeverityText())
+	}
+	if len(l.config.Labels.NameLabel) > 0 {
+		labelName := model.LabelName(l.config.Labels.NameLabel)
+		ls[labelName] = model.LabelValue(lr.Name())
+	}
+	return ls
+}
+
 func convertLogToLokiEntry(lr pdata.LogRecord) *logproto.Entry {
 	return &logproto.Entry{
 		Timestamp: time.Unix(0, int64(lr.Timestamp())),
 		Line:      lr.Body().StringVal(),
+	}
+}
+
+func mapToGrafanaLevel(severity pdata.SeverityNumber) string {
+	switch {
+	case severity == pdata.SeverityNumberUNDEFINED:
+		return "unknown"
+	case severity <= pdata.SeverityNumberTRACE4:
+		return "trace"
+	case severity <= pdata.SeverityNumberDEBUG4:
+		return "debug"
+	case severity <= pdata.SeverityNumberINFO4:
+		return "info"
+	case severity <= pdata.SeverityNumberWARN4:
+		return "warning"
+	case severity <= pdata.SeverityNumberERROR4:
+		return "error"
+	case severity <= pdata.SeverityNumberFATAL4:
+		return "critical"
+	default:
+		return "unknown"
 	}
 }

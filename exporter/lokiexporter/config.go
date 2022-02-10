@@ -53,6 +53,17 @@ type LabelsConfig struct {
 
 	// ResourceAttributes are the resource attributes that are allowed to be added as labels on a log stream.
 	ResourceAttributes map[string]string `mapstructure:"resource"`
+
+	// The label name used for the span ID
+	SpanIDLabel string `mapstructure:"span_id"`
+	// The label name used for the trace ID
+	TraceIDLabel string `mapstructure:"trace_id"`
+	// The label name used for the severity number
+	SeverityNumberLabel string `mapstructure:"severity_number"`
+	// The label name used for the severity text
+	SeverityTextLabel string `mapstructure:"severity_text"`
+	// The label name used for the name
+	NameLabel string `mapstructure:"name"`
 }
 
 func (c *LabelsConfig) validate() error {
